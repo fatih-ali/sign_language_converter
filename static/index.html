@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign Language Converter</title>
+
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: #0a0a0a;
+  color: white;
+  font-family: 'Segoe UI', sans-serif;
+  text-align: center;
+}
+
+.container {
+  max-width: 800px;
+  margin: auto;
+  padding: 20px;
+}
+
+h1 {
+  font-size: 2.5rem;
+  margin-bottom: 10px;
+}
+
+.subtitle {
+  color: #888;
+  margin-bottom: 20px;
+}
+
+.video-box {
+  position: relative;
+  border-radius: 15px;
+  overflow: hidden;
+  border: 1px solid #333;
+}
+
+video {
+  width: 100%;
+  transform: scaleX(-1);
+}
+
+.overlay {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.live {
+  background: red;
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+}
+
+.sign-box {
+  background: rgba(0,0,0,0.6);
+  padding: 8px 15px;
+  border-radius: 10px;
+}
+
+.sign-name {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #8b5cf6;
+}
+
+.controls {
+  margin-top: 15px;
+}
+
+button {
+  padding: 10px 20px;
+  margin: 5px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.start {
+  background: linear-gradient(45deg, #8b5cf6, #2563eb);
+  color: white;
+}
+
+.clear {
+  background: #222;
+  color: white;
+}
+
+.sentence {
+  margin-top: 20px;
+  font-size: 1.5rem;
+  color: #ccc;
+}
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+  <h1>Sign Language Converter</h1>
+  <p class="subtitle">Real-time AI detection</p>
+
+  <div class="video-box">
+    <video id="video" autoplay></video>
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <div class="overlay">
+      <div class="live">LIVE</div>
+      <div class="sign-box">
+        <div id="currentSign" class="sign-name">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="start" onclick="startCamera()">Start</button>
+    <button class="clear" onclick="clearSentence()">Clear</button>
+  </div>
+
+  <div class="sentence" id="sentenceText">
+    Start signing...
+  </div>
+
+</div>
+
+<script>
+let video = document.getElementById("video");
+let canvas = document.getElementById("canvas");
+let currentSign = document.getElementById("currentSign");
+let sentenceText = document.getElementById("sentenceText");
+
+let sentence = [];
+let lastSign = null;
+let hold = 0;
+
+async function startCamera() {
+    let stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    video.srcObject = stream;
+
+    setInterval(sendFrame, 700);
+}
+
+async function sendFrame() {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    let ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0);
+
+    canvas.toBlob(async (blob) => {
+        let formData = new FormData();
+        formData.append("file", blob);
+
+        let res = await fetch("/detect", {
+            method: "POST",
+            body: formData
+        });
+
+        let data = await res.json();
+
+        if (data.detections.length > 0) {
+            let sign = data.detections[0].sign;
+            currentSign.innerText = sign;
+
+            if (sign === lastSign) {
+                hold++;
+            } else {
+                hold = 0;
+                lastSign = sign;
+            }
+
+            if (hold === 3) {
+                sentence.push(sign);
+                updateSentence();
+                hold = 0;
+            }
+
+        } else {
+            currentSign.innerText = "—";
+        }
+    });
+}
+
+function updateSentence() {
+    sentenceText.innerText = sentence.join(" ");
+}
+
+function clearSentence() {
+    sentence = [];
+    updateSentence();
+}
+</script>
+
+</body>
+</html>
