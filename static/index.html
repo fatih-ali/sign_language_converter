@@ -6,11 +6,7 @@
 <title>Sign Language Converter</title>
 
 <style>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
   background: #0a0a0a;
@@ -25,15 +21,8 @@ body {
   padding: 20px;
 }
 
-h1 {
-  font-size: 2.5rem;
-  margin-bottom: 10px;
-}
-
-.subtitle {
-  color: #888;
-  margin-bottom: 20px;
-}
+h1 { font-size: 2.5rem; margin-bottom: 10px; }
+.subtitle { color: #888; margin-bottom: 20px; }
 
 .video-box {
   position: relative;
@@ -75,9 +64,7 @@ video {
   color: #8b5cf6;
 }
 
-.controls {
-  margin-top: 15px;
-}
+.controls { margin-top: 15px; }
 
 button {
   padding: 10px 20px;
@@ -98,13 +85,17 @@ button {
   color: white;
 }
 
+.voice {
+  background: #444;
+  color: white;
+}
+
 .sentence {
   margin-top: 20px;
   font-size: 1.5rem;
   color: #ccc;
 }
 </style>
-
 </head>
 
 <body>
@@ -116,7 +107,6 @@ button {
 
   <div class="video-box">
     <video id="video" autoplay></video>
-    <canvas id="canvas" style="display:none;"></canvas>
 
     <div class="overlay">
       <div class="live">LIVE</div>
@@ -129,6 +119,7 @@ button {
   <div class="controls">
     <button class="start" onclick="startCamera()">Start</button>
     <button class="clear" onclick="clearSentence()">Clear</button>
+    <button class="voice" onclick="toggleVoice()">Voice ON/OFF</button>
   </div>
 
   <div class="sentence" id="sentenceText">
@@ -139,7 +130,6 @@ button {
 
 <script>
 let video = document.getElementById("video");
-let canvas = document.getElementById("canvas");
 let currentSign = document.getElementById("currentSign");
 let sentenceText = document.getElementById("sentenceText");
 
@@ -147,21 +137,62 @@ let sentence = [];
 let lastSign = null;
 let hold = 0;
 
+let voiceEnabled = true;
+
+const ignoreList = ["true", "false"];
+
+let lastSpokenTime = 0;
+let cooldown = 1000; // 1 sec gap
+
+// 🎤 voices
+let voices = [];
+window.speechSynthesis.onvoiceschanged = () => {
+    voices = window.speechSynthesis.getVoices();
+};
+
+// 🔊 speak function
+function speak(word) {
+    if (!voiceEnabled) return;
+
+    window.speechSynthesis.cancel();
+
+    const speech = new SpeechSynthesisUtterance(word);
+
+    let preferred = voices.find(v =>
+        v.name.toLowerCase().includes("female") ||
+        v.name.toLowerCase().includes("google") ||
+        v.name.toLowerCase().includes("zira")
+    );
+
+    if (preferred) speech.voice = preferred;
+
+    speech.lang = "en-US";
+    speech.rate = 1.1;
+
+    window.speechSynthesis.speak(speech);
+}
+
+function toggleVoice() {
+    voiceEnabled = !voiceEnabled;
+    alert("Voice: " + (voiceEnabled ? "ON" : "OFF"));
+}
+
 async function startCamera() {
     let stream = await navigator.mediaDevices.getUserMedia({ video: true });
     video.srcObject = stream;
 
-    setInterval(sendFrame, 700);
+    setInterval(sendFrame, 200);
 }
 
 async function sendFrame() {
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    let tempCanvas = document.createElement("canvas");
+    tempCanvas.width = video.videoWidth;
+    tempCanvas.height = video.videoHeight;
 
-    let ctx = canvas.getContext("2d");
+    let ctx = tempCanvas.getContext("2d");
     ctx.drawImage(video, 0, 0);
 
-    canvas.toBlob(async (blob) => {
+    tempCanvas.toBlob(async (blob) => {
         let formData = new FormData();
         formData.append("file", blob);
 
@@ -174,6 +205,9 @@ async function sendFrame() {
 
         if (data.detections.length > 0) {
             let sign = data.detections[0].sign;
+
+            if (ignoreList.includes(sign)) return;
+
             currentSign.innerText = sign;
 
             if (sign === lastSign) {
@@ -183,9 +217,18 @@ async function sendFrame() {
                 lastSign = sign;
             }
 
-            if (hold === 3) {
-                sentence.push(sign);
-                updateSentence();
+            if (hold === 2) {
+                let now = Date.now();
+
+                // 🧠 cooldown logic
+                if (now - lastSpokenTime > cooldown) {
+                    sentence.push(sign);
+                    updateSentence();
+                    speak(sign);
+
+                    lastSpokenTime = now;
+                }
+
                 hold = 0;
             }
 
